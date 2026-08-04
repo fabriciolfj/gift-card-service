@@ -1,0 +1,1438 @@
+openapi: 3.1.0
+
+info:
+  title: Gift Card Service API
+  version: 1.0.0
+  description: |
+    Serviço de vale-presente closed-loop com autorização em duas fases
+    (hold/capture), ledger append-only e idempotência obrigatória em
+    operações financeiras.
+
+    ## Convenções
+
+    - **Dinheiro**: sempre inteiro em centavos, nunca decimal em JSON —
+      decimal vira `Double` no cliente descuidado e perde precisão.
+      Em **requests** é um escalar (`amountCents`): a moeda é implícita, já
+      que `BRL` é a única suportada, e campo de valor único não previne bug.
+      Em **responses** é o objeto `{ amountCents, currency }`, porque uma
+      resposta traz vários campos de dinheiro e a moeda documenta o tipo.
+    - **Ações não-CRUD**: sufixo `:verbo` no path (`:capture`, `:activate`).
+    - **Erros**: RFC 9457 (`application/problem+json`) com `code` de domínio
+      estável. Clientes devem ramificar por `code`, nunca por `detail`.
+    - **Idempotência**: obrigatória em todo POST que move valor. Ver
+      `IdempotencyKey`.
+    - **Código do vale**: nunca aparece em path ou query. Consulta por código
+      é `POST /gift-cards:lookup`. Em claro somente na resposta de `:activate`.
+
+    ## Como integrar a idempotência
+
+    Toda operação que move valor exige o header `Idempotency-Key`. A chave é
+    **gerada pelo cliente** — não existe endpoint que a emita, porque só o
+    cliente sabe se está fazendo uma nova operação ou retentando uma antiga.
+
+    ### A regra que faz tudo funcionar
+
+    > A chave é gerada **uma vez, antes da primeira tentativa**, e **reusada
+    > em todas as retentativas** da mesma operação.
+
+    A chave pertence à *intenção*, não à tentativa HTTP. Gerar uma chave nova
+    a cada retentativa torna o mecanismo inútil: cada tentativa é vista como
+    uma operação distinta, e é assim que se cria pedido duplicado.
+
+    ```java
+    // ERRADO — chave dentro do loop de retry
+    for (int i = 0; i < 3; i++) {
+        var key = UUID.randomUUID().toString();
+        try { return post(url, body, key); } catch (TimeoutException e) { }
+    }
+
+    // CERTO — chave nasce com a intenção, fora do loop
+    var key = UUID.randomUUID().toString();
+    for (int i = 0; i < 3; i++) {
+        try { return post(url, body, key); } catch (TimeoutException e) { }
+    }
+    ```
+
+    ### Onde guardar a chave
+
+    - **Retry no client HTTP** (interceptor, Resilience4j): o request é
+      reenviado com os mesmos headers, funciona sem esforço.
+    - **Checkout web**: gerar quando a tela de pagamento abre e guardar no
+      estado da página — não no `onClick`, senão duplo clique gera duas
+      chaves. Recarregar a página é operação nova e chave nova.
+    - **Orquestrador server-to-server**: a chave precisa sobreviver a um
+      restart. Persista junto com a intenção, ou derive de forma
+      determinística — por exemplo `hash(orderRef + giftCardId + ":authorize")`
+      — para reconstruí-la sem guardar estado.
+
+    ### Contrato resumido
+
+    | Situação | Resposta |
+    |---|---|
+    | Primeira requisição | `201` (ou `200`, conforme o endpoint) |
+    | Mesma chave, mesmo conteúdo | `200` com a resposta original, byte-a-byte |
+    | Mesma chave, conteúdo diferente | `422 IDEMPOTENCY_KEY_REUSE` |
+    | Mesma chave, requisição ainda em voo | `409 IN_PROGRESS` + `Retry-After` |
+    | Mesma chave, outro endpoint | `422 IDEMPOTENCY_KEY_REUSE` |
+    | Chave nova, mesmo conteúdo | nova operação — **não** há deduplicação por conteúdo |
+
+    Chaves expiram em **7 dias**. Retentativa após esse prazo é tratada como
+    operação nova.
+
+    ### O que entra na comparação de conteúdo
+
+    A verificação usa um resumo (SHA-256) dos campos que definem a intenção:
+    valor, comprador e destinatário.
+
+    **Não** entram campos que mudam legitimamente entre tentativas, como
+    `X-Correlation-Id` e horários enviados pelo cliente. Ou seja: gerar um
+    novo `correlationId` por tentativa é correto e não causa `422`.
+
+  contact:
+    name: Squad Payments
+  license:
+    name: Proprietary
+
+servers:
+  - url: https://api.example.com
+    description: Produção
+  - url: https://api.sandbox.example.com
+    description: Sandbox
+
+security:
+  - bearerAuth: []
+
+tags:
+  - name: Orders
+    description: Pedidos de emissão de vale
+  - name: Gift Cards
+    description: Ciclo de vida e consulta do vale
+  - name: Authorizations
+    description: Reserva e captura de saldo
+  - name: Refunds
+    description: Devoluções
+  - name: Reports
+    description: Passivo circulante e reconciliação
+
+paths:
+
+  # ────────────────────────────────────────────────────────────────
+  # Pedidos de emissão
+  # ────────────────────────────────────────────────────────────────
+
+  /v1/gift-card-orders:
+    post:
+      tags: [Orders]
+      operationId: createGiftCardOrder
+      summary: Cria pedido de emissão de vale
+      description: |
+        Cria a intenção de compra. **Não gera saldo nem código utilizável**:
+        o vale só nasce em `:activate`, após confirmação do pagamento (RN-07).
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateGiftCardOrderRequest'
+      responses:
+        '201':
+          description: Pedido criado
+          headers:
+            Location:
+              schema: { type: string, format: uri }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCardOrder' }
+        '200':
+          description: |
+            Replay de `Idempotency-Key` com fingerprint idêntico. Devolve a
+            resposta original, sem criar novo pedido (RN-19).
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCardOrder' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '401': { $ref: '#/components/responses/Unauthorized' }
+        '409': { $ref: '#/components/responses/IdempotencyInProgress' }
+        '422':
+          description: |
+            Regra de negócio violada. `code` possível:
+            `AMOUNT_OUT_OF_RANGE`, `AMOUNT_NOT_MULTIPLE`, `VALIDATION_ERROR`,
+            `IDEMPOTENCY_KEY_REUSE`.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              examples:
+                amountOutOfRange:
+                  value:
+                    type: https://errors.example.com/amount-out-of-range
+                    title: Valor fora da faixa permitida
+                    status: 422
+                    code: AMOUNT_OUT_OF_RANGE
+                    detail: Valor deve estar entre R$ 20,00 e R$ 1.000,00
+                    correlationId: 01J8Z3K4M5N6P7Q8R9S0T1U2V3
+                    context:
+                      minAmountCents: 2000
+                      maxAmountCents: 100000
+                      requestedAmountCents: 150000
+                notMultiple:
+                  value:
+                    type: https://errors.example.com/amount-not-multiple
+                    title: Valor não é múltiplo permitido
+                    status: 422
+                    code: AMOUNT_NOT_MULTIPLE
+                    detail: Valor deve ser múltiplo de R$ 1,00
+                    correlationId: 01J8Z3K4M5N6P7Q8R9S0T1U2V3
+                    context:
+                      multipleCents: 100
+                      requestedAmountCents: 13743
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/gift-card-orders/{orderId}:
+    get:
+      tags: [Orders]
+      operationId: getGiftCardOrder
+      summary: Consulta pedido de emissão
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+      responses:
+        '200':
+          description: Pedido encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCardOrder' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/gift-card-orders/{orderId}:activate:
+    post:
+      tags: [Orders]
+      operationId: activateGiftCardOrder
+      summary: Ativa o vale após confirmação de pagamento
+      description: |
+        Transição `PENDING_PAYMENT → ACTIVE`. Gera o lançamento `ISSUE` e
+        define `expiresAt` conforme a política de validade vigente.
+
+        **Esta é a única resposta da API que contém o código em claro.**
+        Confirmação duplicada do mesmo `paymentRef` não gera segundo `ISSUE`
+        e devolve `200` com o mesmo vale, porém **sem** o campo `code`.
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ActivateRequest' }
+      responses:
+        '201':
+          description: Vale ativado. Contém `code` em claro, uma única vez.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCardWithCode' }
+        '200':
+          description: Ativação já processada. Sem `code`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCard' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            `code`: `INVALID_STATE_TRANSITION` (pedido cancelado ou já ativo
+            por outro pagamento).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '422':
+          description: '`code`: `PAYMENT_AMOUNT_MISMATCH`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/gift-card-orders/{orderId}:cancel:
+    post:
+      tags: [Orders]
+      operationId: cancelGiftCardOrder
+      summary: Cancela pedido não pago
+      description: Permitido apenas se não existir nenhum lançamento (RN-15).
+      parameters:
+        - $ref: '#/components/parameters/OrderId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '204': { description: Cancelado }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`code`: `ORDER_ALREADY_ACTIVATED`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  # ────────────────────────────────────────────────────────────────
+  # Vale
+  # ────────────────────────────────────────────────────────────────
+
+  /v1/gift-cards:lookup:
+    post:
+      tags: [Gift Cards]
+      operationId: lookupGiftCard
+      summary: Resolve código em identificador e saldo
+      description: |
+        POST — e não GET — deliberadamente: o código não deve trafegar em
+        path, query, access log, `Referer` ou cache de proxy.
+
+        **Anti-enumeração**: código inexistente e código com dígito
+        verificador inválido retornam o mesmo `404` com `code:
+        GIFT_CARD_NOT_FOUND`. A comparação do hash é em tempo constante e a
+        latência não distingue os casos (US-03). Rate limit agressivo por
+        IP.
+      parameters:
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/LookupRequest' }
+      responses:
+        '200':
+          description: Vale encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCard' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+  /v1/gift-cards/{giftCardId}:
+    get:
+      tags: [Gift Cards]
+      operationId: getGiftCard
+      summary: Consulta vale por identificador
+      parameters:
+        - $ref: '#/components/parameters/GiftCardId'
+      responses:
+        '200':
+          description: Vale encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCard' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/gift-cards/{giftCardId}/statement:
+    get:
+      tags: [Gift Cards]
+      operationId: getStatement
+      summary: Extrato de lançamentos e autorizações
+      description: |
+        Ordem cronológica decrescente. Paginação por cursor opaco — nunca
+        offset, que produz resultado inconsistente sob escrita concorrente.
+      parameters:
+        - $ref: '#/components/parameters/GiftCardId'
+        - name: cursor
+          in: query
+          description: Cursor opaco devolvido em `nextCursor`.
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+        - name: type
+          in: query
+          description: Filtra por tipo de movimentação.
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/MovementType' }
+      responses:
+        '200':
+          description: Página do extrato
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/StatementPage' }
+        '400':
+          description: '`code`: `INVALID_CURSOR`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  /v1/gift-cards/{giftCardId}:block:
+    post:
+      tags: [Gift Cards]
+      operationId: blockGiftCard
+      summary: Bloqueia o vale
+      description: |
+        Impede débito, mantém consulta. `reason` é obrigatório e vai para
+        auditoria imutável com o `actor` extraído do token (RN-21).
+      parameters:
+        - $ref: '#/components/parameters/GiftCardId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '200':
+          description: Bloqueado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCard' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`code`: `INVALID_STATE_TRANSITION`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/gift-cards/{giftCardId}:unblock:
+    post:
+      tags: [Gift Cards]
+      operationId: unblockGiftCard
+      summary: Desbloqueia o vale
+      description: Retorna ao estado anterior ao bloqueio.
+      parameters:
+        - $ref: '#/components/parameters/GiftCardId'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ReasonRequest' }
+      responses:
+        '200':
+          description: Desbloqueado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCard' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`code`: `INVALID_STATE_TRANSITION`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/gift-cards/{giftCardId}:extend-expiry:
+    post:
+      tags: [Gift Cards]
+      operationId: extendExpiry
+      summary: Prorroga a validade
+      description: |
+        Somente prorrogação. Redução de validade já contratada é rejeitada
+        com `422 EXPIRY_REDUCTION_NOT_ALLOWED` (RN-16).
+      parameters:
+        - $ref: '#/components/parameters/GiftCardId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ExtendExpiryRequest' }
+      responses:
+        '200':
+          description: Validade prorrogada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/GiftCard' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: '`code`: `EXPIRY_REDUCTION_NOT_ALLOWED`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  # ────────────────────────────────────────────────────────────────
+  # Autorizações
+  # ────────────────────────────────────────────────────────────────
+
+  /v1/authorizations:
+    post:
+      tags: [Authorizations]
+      operationId: createAuthorization
+      summary: Reserva saldo (hold)
+      description: |
+        Reserva sem débito contábil: reduz `availableAmount`, preserva
+        `balance` (RN-01). Expira sozinha em `expiresAt` (RN-10).
+
+        Aceita `giftCardId` **ou** `code` — o segundo para o caso de
+        checkout em que o cliente digitou o código e não se quer um
+        round-trip extra de lookup.
+
+        Recurso de topo, e não sub-recurso do vale, porque no split payment
+        um único `orderRef` agrupa holds de vales distintos.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateAuthorizationRequest' }
+      responses:
+        '201':
+          description: Saldo reservado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Authorization' }
+        '200':
+          description: Replay idempotente. Mesmo `holdId`, sem nova reserva.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Authorization' }
+        '400': { $ref: '#/components/responses/BadRequest' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            `code`: `GIFT_CARD_NOT_DEBITABLE` (estado `BLOCKED`, `EXPIRED`,
+            `CANCELLED` ou `PENDING_PAYMENT` — RN-09), ou `IN_PROGRESS`.
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              examples:
+                blocked:
+                  value:
+                    type: https://errors.example.com/gift-card-not-debitable
+                    title: Vale não pode ser debitado
+                    status: 409
+                    code: GIFT_CARD_NOT_DEBITABLE
+                    detail: Vale encontra-se bloqueado
+                    correlationId: 01J8Z3K4M5N6P7Q8R9S0T1U2V3
+                    context:
+                      giftCardStatus: BLOCKED
+        '422':
+          description: '`code`: `INSUFFICIENT_FUNDS`, `IDEMPOTENCY_KEY_REUSE`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              examples:
+                insufficientFunds:
+                  value:
+                    type: https://errors.example.com/insufficient-funds
+                    title: Saldo insuficiente
+                    status: 422
+                    code: INSUFFICIENT_FUNDS
+                    detail: Saldo disponível inferior ao valor solicitado
+                    correlationId: 01J8Z3K4M5N6P7Q8R9S0T1U2V3
+                    context:
+                      availableAmountCents: 1000
+                      requestedAmountCents: 4000
+        '429': { $ref: '#/components/responses/TooManyRequests' }
+
+    get:
+      tags: [Authorizations]
+      operationId: listAuthorizations
+      summary: Lista autorizações
+      description: |
+        Filtro por `orderRef` é o caminho de recuperação do orquestrador de
+        split payment após um crash: ele reconstrói quais holds já criou.
+      parameters:
+        - name: giftCardId
+          in: query
+          schema: { type: string, format: uuid }
+        - name: orderRef
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema:
+            type: array
+            items: { $ref: '#/components/schemas/AuthorizationStatus' }
+        - name: cursor
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 100, default: 20 }
+      responses:
+        '200':
+          description: Página de autorizações
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AuthorizationPage' }
+
+  /v1/authorizations/{holdId}:
+    get:
+      tags: [Authorizations]
+      operationId: getAuthorization
+      summary: Consulta autorização
+      parameters:
+        - $ref: '#/components/parameters/HoldId'
+      responses:
+        '200':
+          description: Autorização encontrada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Authorization' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+    delete:
+      tags: [Authorizations]
+      operationId: voidAuthorization
+      summary: Libera autorização (void)
+      description: |
+        Restaura `availableAmount`. **Não gera lançamento no ledger** —
+        hold nunca moveu saldo contábil (RN-05).
+
+        Idempotente: liberar hold já liberado ou já expirado devolve `204`.
+        Liberar hold capturado devolve `409`.
+      parameters:
+        - $ref: '#/components/parameters/HoldId'
+        - $ref: '#/components/parameters/CorrelationId'
+      responses:
+        '204': { description: 'Liberada, ou já estava liberada' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: '`code`: `HOLD_ALREADY_CAPTURED`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /v1/authorizations/{holdId}:capture:
+    post:
+      tags: [Authorizations]
+      operationId: captureAuthorization
+      summary: Captura a autorização
+      description: |
+        Efetiva o débito: gera lançamento `CAPTURE` e encerra o hold. Valor
+        omitido captura o total autorizado.
+
+        Captura parcial encerra o hold e libera a diferença — mesma
+        semântica de adquirente. **Um hold é capturável uma única vez**
+        (RN-11), garantido por índice único parcial em
+        `ledger_entry (hold_id) WHERE type='CAPTURE'`. Segunda tentativa
+        retorna `409` mesmo com `Idempotency-Key` diferente.
+      parameters:
+        - $ref: '#/components/parameters/HoldId'
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CaptureRequest' }
+      responses:
+        '200':
+          description: Capturada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Capture' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: |
+            `code`: `HOLD_NOT_CAPTURABLE` (já capturado, liberado ou
+            expirado — RN-12).
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              examples:
+                expired:
+                  value:
+                    type: https://errors.example.com/hold-not-capturable
+                    title: Autorização não capturável
+                    status: 409
+                    code: HOLD_NOT_CAPTURABLE
+                    detail: Autorização expirou antes da captura
+                    correlationId: 01J8Z3K4M5N6P7Q8R9S0T1U2V3
+                    context:
+                      holdStatus: EXPIRED
+                      expiredAt: '2026-07-29T14:31:00Z'
+        '422':
+          description: '`code`: `CAPTURE_EXCEEDS_AUTHORIZED`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  # ────────────────────────────────────────────────────────────────
+  # Reembolsos
+  # ────────────────────────────────────────────────────────────────
+
+  /v1/refunds:
+    post:
+      tags: [Refunds]
+      operationId: createRefund
+      summary: Reembolsa uma captura
+      description: |
+        Sempre referencia uma captura e é limitado a
+        `capturado − já_reembolsado` **daquela captura** (RN-13).
+
+        Reembolso reativa `DEPLETED → PARTIALLY_USED`. Em vale já expirado,
+        a política default prorroga a validade em 30 dias e emite
+        `GiftCardExpiryExtended` (RN-14) — comportamento visível em
+        `expiryExtendedTo` na resposta.
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/CorrelationId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CreateRefundRequest' }
+      responses:
+        '201':
+          description: Reembolsada
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Refund' }
+        '200':
+          description: Replay idempotente
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Refund' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '422':
+          description: '`code`: `REFUND_EXCEEDS_CAPTURED`'
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+              examples:
+                exceeds:
+                  value:
+                    type: https://errors.example.com/refund-exceeds-captured
+                    title: Reembolso excede o valor capturado
+                    status: 422
+                    code: REFUND_EXCEEDS_CAPTURED
+                    detail: Valor solicitado excede o saldo reembolsável
+                    correlationId: 01J8Z3K4M5N6P7Q8R9S0T1U2V3
+                    context:
+                      capturedAmountCents: 5000
+                      alreadyRefundedCents: 3000
+                      refundableAmountCents: 2000
+                      requestedAmountCents: 4000
+
+  /v1/refunds/{refundId}:
+    get:
+      tags: [Refunds]
+      operationId: getRefund
+      summary: Consulta reembolso
+      parameters:
+        - name: refundId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: Reembolso encontrado
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Refund' }
+        '404': { $ref: '#/components/responses/NotFound' }
+
+  # ────────────────────────────────────────────────────────────────
+  # Relatórios
+  # ────────────────────────────────────────────────────────────────
+
+  /v1/reports/outstanding-liability:
+    get:
+      tags: [Reports]
+      operationId: getOutstandingLiability
+      summary: Passivo circulante de vales
+      description: |
+        Visão consumida pela contabilidade: total em circulação, breakage do
+        período e quebra por safra de emissão (US-13).
+      parameters:
+        - name: asOf
+          in: query
+          description: Data de referência. Default hoje.
+          schema: { type: string, format: date }
+        - name: groupBy
+          in: query
+          schema:
+            type: string
+            enum: [ISSUANCE_MONTH, NONE]
+            default: NONE
+      responses:
+        '200':
+          description: Relatório
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/LiabilityReport' }
+
+  /v1/reports/reconciliation/{date}:
+    get:
+      tags: [Reports]
+      operationId: getReconciliation
+      summary: Fechamento diário e divergências
+      description: |
+        Confere `Σ ISSUE − Σ CAPTURE + Σ REFUND − Σ EXPIRY` contra o
+        snapshot de saldo de todos os vales e lista as exceções encontradas
+        (US-15).
+      parameters:
+        - name: date
+          in: path
+          required: true
+          schema: { type: string, format: date }
+      responses:
+        '200':
+          description: Resultado do fechamento
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReconciliationReport' }
+        '404':
+          description: Fechamento ainda não executado para a data
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+# ──────────────────────────────────────────────────────────────────
+components:
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        `sub` (actor de auditoria) é extraído das claims.
+        Escopos: `giftcard:read`, `giftcard:issue`, `giftcard:debit`,
+        `giftcard:refund`, `giftcard:admin`.
+
+  parameters:
+
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: |
+        Chave única **gerada pelo cliente**, idealmente ULID ou UUIDv7.
+        Retenção de 7 dias.
+
+        **Gere uma chave por operação lógica, não por tentativa HTTP**, e
+        reuse a mesma em todas as retentativas da mesma operação. Ver
+        "Como integrar a idempotência" na descrição da API.
+
+        Semântica no servidor (RN-19):
+        - mesma chave + mesmo conteúdo → `200` com a resposta original
+        - mesma chave + conteúdo diferente → `422 IDEMPOTENCY_KEY_REUSE`
+        - mesma chave + outro endpoint → `422 IDEMPOTENCY_KEY_REUSE`
+        - mesma chave com requisição em voo → `409 IN_PROGRESS`
+      schema: { type: string, minLength: 16, maxLength: 64 }
+      example: 01J8Z3K4M5N6P7Q8R9S0T1U2V3
+
+    CorrelationId:
+      name: X-Correlation-Id
+      in: header
+      required: false
+      description: Propagado para logs, auditoria e eventos. Gerado se ausente.
+      schema: { type: string, maxLength: 64 }
+
+    GiftCardId:
+      name: giftCardId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+    OrderId:
+      name: orderId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+    HoldId:
+      name: holdId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+
+    BadRequest:
+      description: Requisição malformada ou header obrigatório ausente
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    Unauthorized:
+      description: Token ausente, inválido ou sem escopo
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    NotFound:
+      description: |
+        Recurso não encontrado. Para `:lookup`, resposta deliberadamente
+        indistinguível entre código inexistente e dígito verificador inválido.
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    IdempotencyInProgress:
+      description: Requisição com a mesma `Idempotency-Key` em processamento
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+    TooManyRequests:
+      description: Rate limit excedido
+      headers:
+        Retry-After:
+          schema: { type: integer }
+        RateLimit-Remaining:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+
+    # ── Value objects ──────────────────────────────────────────────
+
+    AmountCents:
+      type: integer
+      format: int64
+      minimum: 1
+      description: |
+        Valor em centavos, usado em **requests**. Moeda implícita `BRL`.
+
+        Na emissão, sujeito à faixa configurada (RN-06) e, se a granularidade
+        estiver ativa, a um múltiplo. A granularidade vale **apenas para o
+        valor de emissão** — saldo com centavos quebrados é normal e esperado
+        após capturas parciais.
+      example: 30000
+
+    Money:
+      type: object
+      description: |
+        Dinheiro em **responses**. Inteiro em centavos + moeda explícita,
+        porque uma resposta traz vários campos de valor.
+      required: [amountCents, currency]
+      properties:
+        amountCents:
+          type: integer
+          format: int64
+          minimum: 0
+          example: 30000
+        currency:
+          type: string
+          enum: [BRL]
+      additionalProperties: false
+
+    GiftCardStatus:
+      type: string
+      enum: [PENDING_PAYMENT, ACTIVE, PARTIALLY_USED, DEPLETED, EXPIRED, BLOCKED, CANCELLED]
+
+    OrderStatus:
+      type: string
+      enum: [PENDING_PAYMENT, ACTIVATED, CANCELLED, EXPIRED]
+
+    AuthorizationStatus:
+      type: string
+      enum: [ACTIVE, CAPTURED, RELEASED, EXPIRED]
+
+    MovementType:
+      type: string
+      description: |
+        `HOLD` e `RELEASE` aparecem no extrato para rastreabilidade, mas não
+        são lançamentos do ledger — não movem saldo contábil (RN-05).
+      enum: [ISSUE, CAPTURE, REFUND, EXPIRY, ADJUSTMENT, HOLD, RELEASE]
+
+    Problem:
+      type: object
+      description: RFC 9457, estendido com `code`, `correlationId` e `context`.
+      required: [type, title, status, code]
+      properties:
+        type: { type: string, format: uri }
+        title: { type: string }
+        status: { type: integer }
+        detail:
+          type: string
+          description: Legível por humano. **Não** use para lógica no cliente.
+        instance: { type: string, format: uri }
+        code:
+          type: string
+          description: Identificador estável de domínio. Ramifique por ele.
+          enum:
+            - AMOUNT_OUT_OF_RANGE
+            - AMOUNT_NOT_MULTIPLE
+            - GIFT_CARD_NOT_FOUND
+            - GIFT_CARD_NOT_DEBITABLE
+            - INSUFFICIENT_FUNDS
+            - HOLD_NOT_CAPTURABLE
+            - HOLD_ALREADY_CAPTURED
+            - CAPTURE_EXCEEDS_AUTHORIZED
+            - REFUND_EXCEEDS_CAPTURED
+            - INVALID_STATE_TRANSITION
+            - ORDER_ALREADY_ACTIVATED
+            - PAYMENT_AMOUNT_MISMATCH
+            - EXPIRY_REDUCTION_NOT_ALLOWED
+            - IDEMPOTENCY_KEY_REUSE
+            - IN_PROGRESS
+            - INVALID_CURSOR
+            - RATE_LIMIT_EXCEEDED
+            - VALIDATION_ERROR
+        correlationId: { type: string }
+        errors:
+          type: array
+          description: Erros de validação campo a campo.
+          items:
+            type: object
+            properties:
+              field: { type: string }
+              message: { type: string }
+        context:
+          type: object
+          description: |
+            Dados estruturados úteis ao cliente — limites, saldo disponível,
+            estado atual. Nunca contém o código do vale.
+          additionalProperties: true
+
+    # ── Requests ───────────────────────────────────────────────────
+
+    CreateGiftCardOrderRequest:
+      type: object
+      required: [amountCents]
+      properties:
+        amountCents: { $ref: '#/components/schemas/AmountCents' }
+        purchaserRef:
+          type: string
+          description: Identificador do comprador no sistema de origem.
+          maxLength: 64
+        recipient:
+          type: object
+          description: |
+            Opcional em bloco. Se presente, `email` é obrigatório: nome e
+            mensagem sem endereço não permitem entregar o vale.
+          properties:
+            name: { type: string, maxLength: 120 }
+            email: { type: string, format: email, maxLength: 255 }
+            message: { type: string, maxLength: 280 }
+          required: [email]
+      additionalProperties: false
+      description: |
+        A **política de validade não é escolhida pelo cliente**: o serviço
+        resolve a vigente no momento da compra e a registra para auditoria
+        (RN-16). Ver `expiryPolicyRef` na resposta.
+
+    ActivateRequest:
+      type: object
+      required: [paymentRef, paidAmountCents]
+      properties:
+        paymentRef:
+          type: string
+          description: Identificador da liquidação. Base da deduplicação.
+          maxLength: 64
+        paidAmountCents: { $ref: '#/components/schemas/AmountCents' }
+        paidAt: { type: string, format: date-time }
+      additionalProperties: false
+
+    LookupRequest:
+      type: object
+      required: [code]
+      properties:
+        code:
+          type: string
+          description: 16 caracteres base32 Crockford + dígito verificador.
+          pattern: '^[0-9A-HJKMNP-TV-Z]{16}$'
+      additionalProperties: false
+
+    CreateAuthorizationRequest:
+      type: object
+      description: Informe `giftCardId` **ou** `code`, nunca ambos.
+      required: [amountCents]
+      properties:
+        giftCardId: { type: string, format: uuid }
+        code:
+          type: string
+          pattern: '^[0-9A-HJKMNP-TV-Z]{16}$'
+        amountCents: { $ref: '#/components/schemas/AmountCents' }
+        orderRef:
+          type: string
+          description: |
+            Referência do pedido no e-commerce. Agrupa holds de um mesmo
+            checkout no split payment.
+          maxLength: 64
+        ttlSeconds:
+          type: integer
+          description: |
+            Sobrepõe o TTL default, dentro do teto configurado. Default 1800.
+          minimum: 60
+          maximum: 86400
+      oneOf:
+        - required: [giftCardId]
+        - required: [code]
+      additionalProperties: false
+
+    CaptureRequest:
+      type: object
+      description: Corpo opcional. Ausente captura o valor total autorizado.
+      properties:
+        amountCents:
+          $ref: '#/components/schemas/AmountCents'
+        externalRef:
+          type: string
+          description: Referência da fatura ou nota fiscal.
+          maxLength: 64
+      additionalProperties: false
+
+    CreateRefundRequest:
+      type: object
+      required: [captureId, amountCents, reason]
+      properties:
+        captureId:
+          type: string
+          format: uuid
+          description: Captura de origem. Define o teto reembolsável (RN-13).
+        amountCents: { $ref: '#/components/schemas/AmountCents' }
+        reason: { type: string, minLength: 3, maxLength: 280 }
+        externalRef: { type: string, maxLength: 64 }
+      additionalProperties: false
+
+    ReasonRequest:
+      type: object
+      required: [reason]
+      properties:
+        reason: { type: string, minLength: 3, maxLength: 280 }
+      additionalProperties: false
+
+    ExtendExpiryRequest:
+      type: object
+      required: [newExpiresAt, reason]
+      properties:
+        newExpiresAt: { type: string, format: date-time }
+        reason: { type: string, minLength: 3, maxLength: 280 }
+      additionalProperties: false
+
+    # ── Responses ──────────────────────────────────────────────────
+
+    GiftCardOrder:
+      type: object
+      required: [id, status, amount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        status: { $ref: '#/components/schemas/OrderStatus' }
+        amount: { $ref: '#/components/schemas/Money' }
+        giftCardId:
+          type: string
+          format: uuid
+          description: Presente somente após a ativação.
+        purchaserRef: { type: string }
+        expiryPolicyRef:
+          type: string
+          description: |
+            Política de validade que o **serviço** resolveu na compra e
+            congelou (RN-16). Somente leitura: o cliente não a escolhe.
+        createdAt: { type: string, format: date-time }
+        activatedAt: { type: string, format: date-time }
+
+    GiftCard:
+      type: object
+      description: |
+        `balance` é o saldo contábil; `availableAmount` desconta os holds
+        ativos. A relação `balance − held = available` é a invariante RN-01
+        e vale em toda resposta.
+      required: [id, status, balance, heldAmount, availableAmount, codeLast4, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        codeLast4:
+          type: string
+          description: Últimos 4 caracteres, para atendimento identificar o vale.
+          pattern: '^[0-9A-HJKMNP-TV-Z]{4}$'
+        status: { $ref: '#/components/schemas/GiftCardStatus' }
+        balance: { $ref: '#/components/schemas/Money' }
+        heldAmount: { $ref: '#/components/schemas/Money' }
+        availableAmount: { $ref: '#/components/schemas/Money' }
+        expiresAt: { type: string, format: date-time }
+        blockReason:
+          type: string
+          description: Presente quando `status = BLOCKED`.
+        orderId: { type: string, format: uuid }
+        createdAt: { type: string, format: date-time }
+        updatedAt: { type: string, format: date-time }
+
+    GiftCardWithCode:
+      allOf:
+        - $ref: '#/components/schemas/GiftCard'
+        - type: object
+          required: [code]
+          properties:
+            code:
+              type: string
+              description: |
+                **Exposto uma única vez**, aqui. O serviço persiste apenas o
+                HMAC-SHA-256 com pepper e não é capaz de reproduzi-lo (RN-08).
+              example: K7M9Q2XR4TVB8NHZ
+
+    Authorization:
+      type: object
+      required: [id, giftCardId, amount, status, expiresAt, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        giftCardId: { type: string, format: uuid }
+        amount: { $ref: '#/components/schemas/Money' }
+        status: { $ref: '#/components/schemas/AuthorizationStatus' }
+        expiresAt: { type: string, format: date-time }
+        orderRef: { type: string }
+        capture:
+          allOf:
+            - $ref: '#/components/schemas/CaptureSummary'
+          description: Presente quando `status = CAPTURED`.
+        giftCardAvailableAmount:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: |
+            Saldo disponível após esta operação. Evita round-trip do checkout
+            para saber se ainda falta valor a pagar.
+        createdAt: { type: string, format: date-time }
+        releasedAt: { type: string, format: date-time }
+
+    CaptureSummary:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        amount: { $ref: '#/components/schemas/Money' }
+        capturedAt: { type: string, format: date-time }
+
+    Capture:
+      type: object
+      required: [id, holdId, giftCardId, amount, capturedAt]
+      properties:
+        id: { type: string, format: uuid }
+        holdId: { type: string, format: uuid }
+        giftCardId: { type: string, format: uuid }
+        amount: { $ref: '#/components/schemas/Money' }
+        releasedAmount:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: Diferença liberada em captura parcial.
+        ledgerEntryId: { type: string, format: uuid }
+        giftCardStatus: { $ref: '#/components/schemas/GiftCardStatus' }
+        giftCardBalance: { $ref: '#/components/schemas/Money' }
+        externalRef: { type: string }
+        capturedAt: { type: string, format: date-time }
+
+    Refund:
+      type: object
+      required: [id, captureId, giftCardId, amount, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        captureId: { type: string, format: uuid }
+        giftCardId: { type: string, format: uuid }
+        amount: { $ref: '#/components/schemas/Money' }
+        refundableAmountRemaining: { $ref: '#/components/schemas/Money' }
+        ledgerEntryId: { type: string, format: uuid }
+        giftCardStatus: { $ref: '#/components/schemas/GiftCardStatus' }
+        giftCardBalance: { $ref: '#/components/schemas/Money' }
+        expiryExtendedTo:
+          type: string
+          format: date-time
+          description: |
+            Presente quando o reembolso incidiu em vale expirado e a política
+            prorrogou a validade (RN-14).
+        reason: { type: string }
+        createdAt: { type: string, format: date-time }
+
+    StatementEntry:
+      type: object
+      required: [id, type, amount, occurredAt]
+      properties:
+        id: { type: string, format: uuid }
+        type: { $ref: '#/components/schemas/MovementType' }
+        amount: { $ref: '#/components/schemas/Money' }
+        signedAmountCents:
+          type: integer
+          format: int64
+          description: Valor com sinal aplicado. Negativo em débito.
+        balanceAfter:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: Ausente em `HOLD` e `RELEASE`, que não movem o saldo.
+        holdId: { type: string, format: uuid }
+        externalRef: { type: string }
+        reason: { type: string }
+        occurredAt: { type: string, format: date-time }
+
+    StatementPage:
+      type: object
+      required: [giftCardId, entries]
+      properties:
+        giftCardId: { type: string, format: uuid }
+        currentBalance: { $ref: '#/components/schemas/Money' }
+        entries:
+          type: array
+          items: { $ref: '#/components/schemas/StatementEntry' }
+        nextCursor:
+          type: string
+          description: Ausente na última página.
+
+    AuthorizationPage:
+      type: object
+      required: [authorizations]
+      properties:
+        authorizations:
+          type: array
+          items: { $ref: '#/components/schemas/Authorization' }
+        nextCursor: { type: string }
+
+    LiabilityReport:
+      type: object
+      properties:
+        asOf: { type: string, format: date }
+        outstandingBalance:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: Passivo total em circulação.
+        heldAmount: { $ref: '#/components/schemas/Money' }
+        breakageInPeriod:
+          allOf:
+            - $ref: '#/components/schemas/Money'
+          description: Saldo expirado sem uso, reconhecido como receita.
+        activeGiftCards: { type: integer }
+        averageBalance: { $ref: '#/components/schemas/Money' }
+        groups:
+          type: array
+          items:
+            type: object
+            properties:
+              key:
+                type: string
+                description: Safra de emissão, formato `YYYY-MM`.
+              outstandingBalance: { $ref: '#/components/schemas/Money' }
+              breakage: { $ref: '#/components/schemas/Money' }
+              giftCardCount: { type: integer }
+
+    DomainEvent:
+      type: object
+      description: |
+        Envelope de evento de domínio. Gravado no Outbox na mesma transação
+        da mudança de estado (RN-20).
+
+        `eventId` é a chave de deduplicação do consumidor — entrega é
+        at-least-once. `version` do agregado permite ao consumidor descartar
+        eventos fora de ordem.
+      required: [eventId, eventType, aggregateId, occurredAt, data]
+      properties:
+        eventId:
+          type: string
+          format: uuid
+          description: Único por evento. Base da deduplicação idempotente.
+        eventType:
+          type: string
+          enum:
+            - GiftCardIssued
+            - FundsHeld
+            - HoldReleased
+            - FundsCaptured
+            - FundsRefunded
+            - GiftCardDepleted
+            - GiftCardExpired
+            - GiftCardExpiryExtended
+            - GiftCardBlocked
+            - GiftCardUnblocked
+            - BalanceAdjusted
+        eventVersion:
+          type: string
+          description: Versão do schema do payload, para evolução compatível.
+          default: '1'
+        aggregateId:
+          type: string
+          format: uuid
+          description: Sempre o `giftCardId`.
+        aggregateVersion:
+          type: integer
+          format: int64
+        occurredAt: { type: string, format: date-time }
+        correlationId: { type: string }
+        data:
+          type: object
+          description: |
+            Payload específico do tipo. **Nunca contém o código do vale**
+            (RN-08) — apenas `codeLast4` quando necessário.
+          additionalProperties: true
+      example:
+        eventId: 9f1c6d2e-4b8a-4c31-9e77-2a5b0d8f1c34
+        eventType: FundsCaptured
+        eventVersion: '1'
+        aggregateId: 3b7e1a55-9c24-4f0d-8a61-7d2e5f9b0c11
+        aggregateVersion: 7
+        occurredAt: '2026-07-29T14:12:03Z'
+        correlationId: 01J8Z3K4M5N6P7Q8R9S0T1U2V3
+        data:
+          holdId: c41f8b02-6d19-4e7a-b3c5-8f0a2d6e9b47
+          captureId: 5e2a9d18-3f47-4b60-9c82-1a7d4e0b6f39
+          codeLast4: 8NHZ
+          amountCents: 4000
+          currency: BRL
+          balanceAfterCents: 1000
+          giftCardStatus: PARTIALLY_USED
+          orderRef: ORD-2026-0083412
+
+    ReconciliationReport:
+      type: object
+      properties:
+        date: { type: string, format: date }
+        status:
+          type: string
+          enum: [BALANCED, DIVERGENT]
+        ledgerTotal: { $ref: '#/components/schemas/Money' }
+        snapshotTotal: { $ref: '#/components/schemas/Money' }
+        differenceCents: { type: integer, format: int64 }
+        exceptions:
+          type: array
+          items:
+            type: object
+            properties:
+              giftCardId: { type: string, format: uuid }
+              kind:
+                type: string
+                enum: [ORPHAN_ENTRY, SNAPSHOT_MISMATCH, NEGATIVE_BALANCE, DANGLING_HOLD]
+              ledgerBalanceCents: { type: integer, format: int64 }
+              snapshotBalanceCents: { type: integer, format: int64 }
+              detail: { type: string }
+
+webhooks:
+
+  giftCardIssued:
+    post:
+      operationId: onGiftCardIssued
+      summary: Vale emitido e ativado
+      description: |
+        Todos os webhooks derivam do Outbox (RN-20) e carregam `eventId` para
+        deduplicação no consumidor. **Nenhum payload contém o código do
+        vale** — somente `giftCardId` e `codeLast4`.
+
+        Entrega at-least-once. Assinatura HMAC no header `X-Signature`.
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DomainEvent' }
+      responses:
+        '2XX': { description: Reconhecido }
+
+  fundsCaptured:
+    post:
+      operationId: onFundsCaptured
+      summary: Saldo capturado
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DomainEvent' }
+      responses:
+        '2XX': { description: Reconhecido }
+
+  giftCardDepleted:
+    post:
+      operationId: onGiftCardDepleted
+      summary: Saldo zerado
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DomainEvent' }
+      responses:
+        '2XX': { description: Reconhecido }
+
+  giftCardExpired:
+    post:
+      operationId: onGiftCardExpired
+      summary: Vale expirado, com valor de breakage
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/DomainEvent' }
+      responses:
+        '2XX': { description: Reconhecido }
