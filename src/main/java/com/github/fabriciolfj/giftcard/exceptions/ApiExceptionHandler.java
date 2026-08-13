@@ -1,10 +1,10 @@
 package com.github.fabriciolfj.giftcard.exceptions;
 
 
-import com.github.fabriciolfj.giftcard.util.CorrelationUtil;
 import jakarta.validation.ConstraintViolationException;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -18,6 +18,7 @@ import java.net.URI;
 import java.util.List;
 import java.util.Map;
 
+import static com.github.fabriciolfj.giftcard.util.ConstantsUtil.CORRELATION_ID;
 import static org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY;
 
 
@@ -103,7 +104,7 @@ public class ApiExceptionHandler {
         return problem;
     }
 
-    /*
+
     @ExceptionHandler(AmountNotMultipleException.class)
     ProblemDetail onAmountNotMultiple(AmountNotMultipleException ex) {
         var problem = problem(HttpStatus.UNPROCESSABLE_ENTITY,
@@ -111,12 +112,10 @@ public class ApiExceptionHandler {
                 "Valor não é múltiplo permitido",
                 ex.getMessage());
         problem.setProperty("context", Map.of(
-                "multipleCents", ex.multipleCents(),
-                "requestedAmountCents", ex.requestedCents()));
+                "multipleCents", ex.getMultipleCents(),
+                "requestedAmountCents", ex.getMultipleCents()));
         return problem;
     }
-
-    // ── Idempotência ──────────────────────────────────────────────────
 
     @ExceptionHandler(IdempotencyKeyReuseException.class)
     ProblemDetail onKeyReuse(IdempotencyKeyReuseException ex) {
@@ -136,10 +135,6 @@ public class ApiExceptionHandler {
         return problem;
     }
 
-    /**
-     * Rede de segurança. Loga o stack trace e devolve mensagem genérica —
-     * detalhe interno em resposta de erro é vazamento de informação.
-     */
     @ExceptionHandler(Exception.class)
     ProblemDetail onUnexpected(Exception ex) {
         log.error("Erro não tratado", ex);
@@ -155,7 +150,7 @@ public class ApiExceptionHandler {
         problem.setType(URI.create(BASE + code.toLowerCase().replace('_', '-')));
         problem.setTitle(title);
         problem.setProperty("code", code);
-        problem.setProperty("correlationId", CorrelationUtil.current());
+        problem.setProperty("correlationId", MDC.get(CORRELATION_ID));
         return problem;
     }
 }

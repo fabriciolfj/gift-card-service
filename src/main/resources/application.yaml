@@ -8,7 +8,7 @@ giftcard:
   order:
     min-amount-cents: 2000          # R$ 20,00
     max-amount-cents: 100000        # R$ 1.000,00
-    amount-multiple-cents: 1        # 1 = desligado. 100 = reais inteiros
+    amount-multiple-cents: 100      # 1 = desligado. 100 = reais inteiros
   expiry:
     default-policy-ref: STANDARD_12M
     policies:

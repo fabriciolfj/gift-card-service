@@ -31,4 +31,16 @@ public record CreateGiftCardOrderRequest(
             String message
     ) {
     }
+
+    public String getRecipientName() {
+        return this.recipient.name;
+    }
+
+    public String getRecipientEmail() {
+        return this.recipient.email;
+    }
+
+    public String getRecipientMessage() {
+        return this.recipient.message;
+    }
 }
