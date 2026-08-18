@@ -7,7 +7,6 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import static com.github.fabriciolfj.giftcard.entrypoints.mapper.CreateOrderGiftCardCommandMapper.toCommand;
-import static com.github.fabriciolfj.giftcard.util.ConstantsUtil.CORRELATION_ID;
 import static com.github.fabriciolfj.giftcard.util.ConstantsUtil.IDEMPOTENCY_KEY;
 
 @Slf4j

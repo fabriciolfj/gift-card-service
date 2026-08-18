@@ -10,8 +10,13 @@ public class GiftCardOrderMapper {
     private GiftCardOrderMapper() { }
 
     public static GiftCardOrder of(CreateOrderGiftCardOrderCommand command) {
-        var money = Money.ofCents(command.amountCents());
-        var recipient = new Recipient(command.getName(), command.getEmail(), command.getMessage());
+        final var money = Money.ofCents(command.amountCents());
+        final var recipientCommand = command.recipientCommand();
+
+        Recipient recipient = null;
+        if (recipientCommand != null) {
+            recipient = new Recipient(recipientCommand.name(), recipientCommand.email(), recipientCommand.message());
+        }
 
         return GiftCardOrder.create(money, recipient, null, command.purcheaserRef());
     }

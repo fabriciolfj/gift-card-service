@@ -5,6 +5,6 @@ public class ConstantsUtil {
 
     private ConstantsUtil() { }
 
-    public static String CORRELATION_ID = "correlationId";
-    public static String IDEMPOTENCY_KEY = "idempotencyKey";
+    public static final String CORRELATION_ID = "X-Correlation-Id";
+    public static final String IDEMPOTENCY_KEY = "idempotencyKey";
 }
