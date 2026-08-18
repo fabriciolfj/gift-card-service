@@ -10,5 +10,5 @@ public record ExpiryProperties(
         String defaultPolicyRef,
         Map<String, Policy> policies
 ) {
-    public record Policy(Period duration) { }
+    public record Policy(Period months) { }
 }

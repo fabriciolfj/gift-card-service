@@ -4,6 +4,8 @@ import com.github.fabriciolfj.giftcard.persistences.rows.IdempotencyRecordRow;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.util.Optional;
+
 @Repository
 public class IdempotencyRepository {
 
@@ -30,11 +32,11 @@ public class IdempotencyRepository {
         this.jdbcClient = jdbcClient;
     }
 
-    public IdempotencyRecordRow load(final String key) {
+    public Optional<IdempotencyRecordRow> load(final String key) {
         return jdbcClient.sql(SQL_LOAD)
                 .param("key", key)
                 .query(new IdempotrencyRowMapper())
-                .single();
+                .optional();
     }
 
     public boolean tryClaim(final IdempotencyRecordRow row, final String key, final String correlationId) {

@@ -1,8 +1,8 @@
 package com.github.fabriciolfj.giftcard.usecases.createordergift;
 
-import com.github.fabriciolfj.giftcard.domain.GiftCard;
-import com.github.fabriciolfj.giftcard.command.CreateOrderGiftCardCommand;
-import com.github.fabriciolfj.giftcard.usecases.common.GiftCardMapper;
+import com.github.fabriciolfj.giftcard.domain.GiftCardOrder;
+import com.github.fabriciolfj.giftcard.command.CreateOrderGiftCardOrderCommand;
+import com.github.fabriciolfj.giftcard.usecases.common.GiftCardOrderMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
@@ -21,12 +21,12 @@ public class OrchestratorCreateOrderGiftCardUsecase {
         this.validateOrderGiftCardUsecases = validateOrderGiftCardUsecases;
     }
 
-    public GiftCard execute(final CreateOrderGiftCardCommand command) {
+    public GiftCardOrder execute(final CreateOrderGiftCardOrderCommand command) {
         log.info("init validation create order card");
 
         final var parameter = getParametersGateway.process();
         validateOrderGiftCardUsecases.forEach(v -> v.execute(command, parameter));
 
-        return GiftCardMapper.of(command);
+        return GiftCardOrderMapper.of(command);
     }
 }

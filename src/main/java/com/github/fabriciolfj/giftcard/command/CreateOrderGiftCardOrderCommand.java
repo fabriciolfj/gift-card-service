@@ -3,7 +3,7 @@ package com.github.fabriciolfj.giftcard.command;
 import lombok.Builder;
 
 @Builder
-public record CreateOrderGiftCardCommand(Long amountCents, String purcheaserRef, RecipientCommand command) {
+public record CreateOrderGiftCardOrderCommand(Long amountCents, String purcheaserRef, RecipientCommand command) {
 
     public String getName() {
         return this.command.name();

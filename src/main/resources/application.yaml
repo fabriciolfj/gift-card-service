@@ -17,4 +17,3 @@ giftcard:
     retention: P7D
     key-min-length: 16
     key-max-length: 64
-    fingerprint-version: v1

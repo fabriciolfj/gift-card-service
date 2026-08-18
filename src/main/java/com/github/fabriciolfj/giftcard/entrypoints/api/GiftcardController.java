@@ -19,14 +19,13 @@ public class GiftcardController {
 
     @PostMapping
     public GiftCardOrderResponse create(@Valid @RequestBody CreateGiftCardOrderRequest request,
-                                        @RequestHeader(value = "Idempotency-Key", required = true) String key,
-                                        @RequestHeader(value = "X-Correlation-Id", required = true) String correlationId) {
+                                        @RequestHeader(value = "Idempotency-Key", required = true) String key) {
 
         log.info("receive request to create order gift {}", request);
-        MDC.put(CORRELATION_ID, correlationId);
         MDC.put(IDEMPOTENCY_KEY, key);
 
         final var command = toCommand(request);
+        MDC.clear();
         return null;
     }
 

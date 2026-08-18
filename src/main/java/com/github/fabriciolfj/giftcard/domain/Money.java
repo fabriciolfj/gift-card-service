@@ -8,7 +8,7 @@ import java.math.RoundingMode;
 public record Money(long cents, Currency currency) implements Comparable<Money> {
 
     public Money {
-        if (this.cents() < 0) {
+        if (cents < 0) {
             throw new IllegalArgumentException("cent denied value negative");
         }
     }
@@ -52,7 +52,7 @@ public record Money(long cents, Currency currency) implements Comparable<Money> 
     @Override
     public int compareTo(@NonNull Money other) {
         sameCurrencyMoney(other);
-        return Long.compare(other.cents, this.cents);
+        return Long.compare(this.cents, other.cents);
     }
 
     @Override

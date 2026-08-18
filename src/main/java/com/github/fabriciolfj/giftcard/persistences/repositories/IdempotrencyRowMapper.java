@@ -14,7 +14,7 @@ public class IdempotrencyRowMapper implements RowMapper<IdempotencyRecordRow> {
         return new IdempotencyRecordRow(
                 rs.getString("endpoint"),
                 rs.getString("request_fingerprint"),
-                rs.getInt("response_status"),
+                rs.getObject("response_status", Integer.class),
                 rs.getString("response_body"),
                 rs.getString("response_location"),
                 rs.getObject("aggregate_id", UUID.class)

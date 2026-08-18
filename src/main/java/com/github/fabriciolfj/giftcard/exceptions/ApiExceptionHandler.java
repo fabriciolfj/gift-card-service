@@ -113,7 +113,7 @@ public class ApiExceptionHandler {
                 ex.getMessage());
         problem.setProperty("context", Map.of(
                 "multipleCents", ex.getMultipleCents(),
-                "requestedAmountCents", ex.getMultipleCents()));
+                "requestedAmountCents", ex.getRequestedCents()));
         return problem;
     }
 

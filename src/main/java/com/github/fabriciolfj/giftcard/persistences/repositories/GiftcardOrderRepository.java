@@ -18,7 +18,7 @@ public interface GiftcardOrderRepository extends JpaRepository<GiftcardOrderEnti
                  correlation_id, version)
             values
                 (:#{#e.id}, :#{#e.amountCents}, :#{#e.currency},
-                 :#{#e.status.name()}, :#{#e.expiryPolicyRef},
+                 :#{#e.status}, :#{#e.expiryPolicyRef},
                  :#{#e.purchaserRef},
                  :#{#e.recipient?.name}, :#{#e.recipient?.email},
                  :#{#e.recipient?.message},
