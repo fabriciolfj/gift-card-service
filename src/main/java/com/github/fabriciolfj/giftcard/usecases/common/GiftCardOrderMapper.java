@@ -18,6 +18,6 @@ public class GiftCardOrderMapper {
             recipient = new Recipient(recipientCommand.name(), recipientCommand.email(), recipientCommand.message());
         }
 
-        return GiftCardOrder.create(money, recipient, null, command.purcheaserRef());
+        return GiftCardOrder.create(money, recipient, null, command.purchaserRef());
     }
 }
