@@ -3,12 +3,14 @@ package com.github.fabriciolfj.giftcard.domain;
 import com.github.f4b6a3.uuid.UuidCreator;
 import lombok.AccessLevel;
 import lombok.AllArgsConstructor;
+import lombok.Getter;
 
 import java.util.UUID;
 
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class GiftCardOrder {
 
+    @Getter
     private final UUID uuid;
     private final Money money;
     private final Recipient recipient;
@@ -25,4 +27,5 @@ public class GiftCardOrder {
                 OrderStatus.PENDING_PAYMENT,
                 purchaserRef);
     }
+
 }

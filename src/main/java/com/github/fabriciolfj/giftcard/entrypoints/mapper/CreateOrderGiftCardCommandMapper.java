@@ -23,7 +23,7 @@ public class CreateOrderGiftCardCommandMapper {
                     .name(request.getRecipientName())
                     .build();
 
-            command.command(recipientCommand);
+            command.recipientCommand(recipientCommand);
         }
 
         return command.build();

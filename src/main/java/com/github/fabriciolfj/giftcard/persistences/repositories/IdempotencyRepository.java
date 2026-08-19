@@ -39,11 +39,11 @@ public class IdempotencyRepository {
                 .optional();
     }
 
-    public boolean tryClaim(final IdempotencyRecordRow row, final String key, final String correlationId) {
+    public boolean tryClaim(final String fingerprint, final String key, final String correlationId, final String endpoint) {
         int rows = jdbcClient.sql(SQL_INSERT)
                 .param("key", key)
-                .param("endpoint", row.endpoint())
-                .param("fingerprint", row.requestFingerprint())
+                .param("endpoint", endpoint)
+                .param("fingerprint", fingerprint)
                 .param("correlationId", correlationId)
                 .update();
 

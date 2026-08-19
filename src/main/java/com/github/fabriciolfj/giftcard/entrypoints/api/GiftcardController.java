@@ -7,6 +7,7 @@ import org.springframework.validation.annotation.Validated;
 import org.springframework.web.bind.annotation.*;
 
 import static com.github.fabriciolfj.giftcard.entrypoints.mapper.CreateOrderGiftCardCommandMapper.toCommand;
+import static com.github.fabriciolfj.giftcard.util.ConstantsUtil.ENDPOINT;
 import static com.github.fabriciolfj.giftcard.util.ConstantsUtil.IDEMPOTENCY_KEY;
 
 @Slf4j
@@ -22,6 +23,7 @@ public class GiftcardController {
 
         log.info("receive request to create order gift {}", request);
         MDC.put(IDEMPOTENCY_KEY, key);
+        MDC.put(ENDPOINT, "giftcreateorder");
 
         final var command = toCommand(request);
         MDC.clear();
