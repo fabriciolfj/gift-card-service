@@ -17,10 +17,10 @@ public class ProcessCreateGiftCardOrderUseCase {
         this.saveGiftCardOrderGateway = saveGiftCardOrderGateway;
     }
 
-    public GiftCardOrder execute(final CreateOrderGiftCardOrderCommand command) {
+    public GiftCardOrder execute(final CreateOrderGiftCardOrderCommand command, final String key) {
         final var giftOrder = orchestratorCreateOrderGiftCardUsecase.execute(command);
 
         log.info("gift order validated {}", giftOrder.getUuid());
-        return saveGiftCardOrderGateway.execute(giftOrder, command);
+        return saveGiftCardOrderGateway.execute(giftOrder, command, key);
     }
 }

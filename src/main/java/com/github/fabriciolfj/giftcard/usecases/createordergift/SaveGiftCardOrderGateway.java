@@ -5,5 +5,5 @@ import com.github.fabriciolfj.giftcard.domain.GiftCardOrder;
 
 public interface SaveGiftCardOrderGateway {
 
-    GiftCardOrder execute(GiftCardOrder giftCardOrder, IdempotentCommand idempotentCommand);
+    GiftCardOrder execute(GiftCardOrder giftCardOrder, IdempotentCommand idempotentCommand, String key);
 }
