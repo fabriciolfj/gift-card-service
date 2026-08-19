@@ -1,5 +1,6 @@
 package com.github.fabriciolfj.giftcard.adapters.createordergiftrcard;
 
+import com.github.fabriciolfj.giftcard.adapters.fingerprint.Fingerprint;
 import com.github.fabriciolfj.giftcard.command.IdempotentCommand;
 import com.github.fabriciolfj.giftcard.domain.GiftCardOrder;
 import com.github.fabriciolfj.giftcard.persistences.repositories.IdempotencyRepository;
@@ -9,7 +10,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
-import static com.github.fabriciolfj.giftcard.util.ConstantsUtil.*;
+import static com.github.fabriciolfj.giftcard.util.ConstantsUtil.CORRELATION_ID;
 
 @Component
 public class SaveGiftCardOrderAdapter implements SaveGiftCardOrderGateway {

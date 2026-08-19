@@ -1,4 +1,4 @@
-package com.github.fabriciolfj.giftcard.adapters.createordergiftrcard;
+package com.github.fabriciolfj.giftcard.adapters.fingerprint;
 
 import com.github.fabriciolfj.giftcard.command.IdempotentCommand;
 
@@ -20,7 +20,7 @@ public final class Fingerprint {
 
             return HexFormat.of().formatHex(hash);
         } catch (NoSuchAlgorithmException e) {
-            throw new IllegalArgumentException("SHA-256 indisponivel, detalhes " + e.getMessage());
+            throw new IllegalArgumentException("SHA-256 indisponivel", e);
         }
     }
 }

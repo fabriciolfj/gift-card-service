@@ -3,7 +3,7 @@ package com.github.fabriciolfj.giftcard.command;
 import lombok.Builder;
 
 @Builder
-public record CreateOrderGiftCardOrderCommand(Long amountCents, String purcheaserRef, RecipientCommand recipientCommand) implements IdempotentCommand {
+public record CreateOrderGiftCardOrderCommand(Long amountCents, String purchaserRef, RecipientCommand recipientCommand) implements IdempotentCommand {
 
 
     private static final String VERSION = "v1";
@@ -15,7 +15,7 @@ public record CreateOrderGiftCardOrderCommand(Long amountCents, String purchease
         return String.join(SEP,
                 VERSION,
                 String.valueOf(amountCents),
-                nz(purcheaserRef),
+                nz(purchaserRef),
                 nz(recipientCommand == null ? null : recipientCommand.name()),
                 nz(recipientCommand == null ? null : recipientCommand.email()),
                 nz(recipientCommand == null ? null : recipientCommand.message()));
