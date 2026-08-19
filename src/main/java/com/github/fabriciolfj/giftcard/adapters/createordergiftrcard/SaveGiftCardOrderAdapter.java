@@ -30,7 +30,7 @@ public class SaveGiftCardOrderAdapter implements SaveGiftCardOrderGateway {
         final var claimed = idempotencyRepository.tryClaim(fingerprint,
                 key,
                 MDC.get(CORRELATION_ID),
-                MDC.get(ENDPOINT));
+                ENDPOINT);
         return null;
     }
 }
