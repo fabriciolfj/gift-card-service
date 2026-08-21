@@ -13,7 +13,7 @@ public class CreateOrderGiftCardCommandMapper {
     public static CreateOrderGiftCardOrderCommand toCommand(final CreateGiftCardOrderRequest request) {
         final var command = CreateOrderGiftCardOrderCommand.builder()
                 .amountCents(request.amountCents())
-                .purcheaserRef(request.purchaserRef());
+                .purchaserRef(request.purchaserRef());
 
         if (Objects.nonNull(request.recipient())) {
             final var recipientCommand = RecipientCommand
