@@ -1,7 +1,5 @@
 package com.github.fabriciolfj.giftcard.entrypoints.api;
 
-import com.github.fabriciolfj.giftcard.domain.SaveResult;
-import com.github.fabriciolfj.giftcard.entrypoints.mapper.GiftCardOrderResponseMapper;
 import com.github.fabriciolfj.giftcard.usecases.createordergift.ProcessCreateGiftCardOrderUseCase;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.Size;
@@ -30,7 +28,7 @@ public class GiftcardController {
     }
 
     @PostMapping
-    public ResponseEntity<?> create(@Valid @RequestBody final CreateGiftCardOrderRequest request,
+    public ResponseEntity<String> create(@Valid @RequestBody final CreateGiftCardOrderRequest request,
                                     @RequestHeader("Idempotency-Key")
                                     @Size(min = 16, max = 64, message = "Idempotency-Key deve ter entre 16 e 64 caracteres")
                                     final String idempotencyKey) {

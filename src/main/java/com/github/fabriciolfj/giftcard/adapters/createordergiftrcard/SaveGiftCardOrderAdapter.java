@@ -6,7 +6,7 @@ import com.github.fabriciolfj.giftcard.adapters.fingerprint.Fingerprint;
 import com.github.fabriciolfj.giftcard.command.IdempotentCommand;
 import com.github.fabriciolfj.giftcard.configurations.IdempotencyProperties;
 import com.github.fabriciolfj.giftcard.domain.GiftCardOrder;
-import com.github.fabriciolfj.giftcard.domain.SaveResult;
+import com.github.fabriciolfj.giftcard.usecases.createordergift.SaveResult;
 import com.github.fabriciolfj.giftcard.exceptions.IdempotencyInProgressException;
 import com.github.fabriciolfj.giftcard.persistences.entities.GiftcardOrderEntityMapper;
 import com.github.fabriciolfj.giftcard.persistences.repositories.GiftcardOrderRepository;

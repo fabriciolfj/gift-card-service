@@ -1,7 +1,6 @@
 package com.github.fabriciolfj.giftcard.usecases.createordergift;
 
 import com.github.fabriciolfj.giftcard.command.CreateOrderGiftCardOrderCommand;
-import com.github.fabriciolfj.giftcard.domain.SaveResult;
 import com.github.fabriciolfj.giftcard.usecases.createordergift.CreateOrderOutputBoundary.RenderedResponse;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

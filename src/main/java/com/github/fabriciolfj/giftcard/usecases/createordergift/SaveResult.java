@@ -1,4 +1,6 @@
-package com.github.fabriciolfj.giftcard.domain;
+package com.github.fabriciolfj.giftcard.usecases.createordergift;
+
+import com.github.fabriciolfj.giftcard.domain.GiftCardOrder;
 
 public sealed interface SaveResult permits SaveResult.Executed, SaveResult.Replayed {
 
