@@ -28,4 +28,14 @@ public class GiftCardOrder {
                 purchaserRef);
     }
 
+    public static GiftCardOrder rehydrate(UUID uuid,
+                                          Money money,
+                                          Recipient recipient,
+                                          ExpiryPolicy policy,
+                                          OrderStatus status,
+                                          String purchaserRef) {
+
+        return new GiftCardOrder(uuid, money, recipient, policy, status, purchaserRef);
+    }
+
 }

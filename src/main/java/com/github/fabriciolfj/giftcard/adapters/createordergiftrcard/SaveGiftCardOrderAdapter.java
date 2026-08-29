@@ -64,7 +64,7 @@ public class SaveGiftCardOrderAdapter implements SaveGiftCardOrderGateway {
 
     private SaveResult replay(final String key, final String fingerprint) {
         final var existing = idempotencyRepository.load(key)
-                .orElseThrow(IdempotencyInProgressException::new);   // 409: linha ainda não commitada (MVCC)
+                .orElseThrow(IdempotencyInProgressException::new);
 
         final var context = new IdempotencyReplayContext(ENDPOINT, fingerprint, existing);
         replayRules.forEach(rule -> rule.verify(context));

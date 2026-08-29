@@ -15,14 +15,12 @@ import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
-import java.net.URI;
-
 import static com.github.fabriciolfj.giftcard.entrypoints.mapper.CreateOrderGiftCardCommandMapper.toCommand;
 
 @Slf4j
 @Validated
 @RestController
-@RequestMapping("/api/v1/giftcard")
+@RequestMapping("/v1/gift-card-orders")
 public class GiftcardController {
 
     private final ProcessCreateGiftCardOrderUseCase processCreateGiftCardOrderUseCase;
