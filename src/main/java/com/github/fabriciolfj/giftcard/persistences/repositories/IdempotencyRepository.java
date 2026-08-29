@@ -4,6 +4,7 @@ import com.github.fabriciolfj.giftcard.persistences.rows.IdempotencyRecordRow;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.time.Duration;
 import java.util.Optional;
 
 @Repository
@@ -22,7 +23,7 @@ public class IdempotencyRepository {
                  correlation_id, created_at, expires_at)
             values
                 (:key, :endpoint, :fingerprint,
-                 :correlationId, now(), now() + interval '7 days')
+                 :correlationId, now(), now() + :retention::interval)
             on conflict (idempotency_key) do nothing            
             """;
 
@@ -39,12 +40,17 @@ public class IdempotencyRepository {
                 .optional();
     }
 
-    public boolean tryClaim(final String fingerprint, final String key, final String correlationId, final String endpoint) {
+    public boolean tryClaim(final String fingerprint,
+                            final String key,
+                            final String correlationId,
+                            final String endpoint,
+                            final Duration duration) {
         int rows = jdbcClient.sql(SQL_INSERT)
                 .param("key", key)
                 .param("endpoint", endpoint)
                 .param("fingerprint", fingerprint)
                 .param("correlationId", correlationId)
+                .param("retention", duration.toDays() + " days")
                 .update();
 
         return rows == 1;

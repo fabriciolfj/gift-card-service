@@ -21,9 +21,12 @@ public class GiftcardController {
 
         log.info("receive request to create order gift {}", request);
 
-        final var command = toCommand(request);
-        MDC.clear();
-        return null;
+        try {
+            final var command = toCommand(request);
+            return null;
+        } finally {
+            MDC.clear();
+        }
     }
 
 }
