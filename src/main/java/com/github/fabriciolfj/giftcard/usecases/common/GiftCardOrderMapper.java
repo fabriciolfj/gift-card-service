@@ -1,6 +1,7 @@
 package com.github.fabriciolfj.giftcard.usecases.common;
 
 import com.github.fabriciolfj.giftcard.command.CreateOrderGiftCardOrderCommand;
+import com.github.fabriciolfj.giftcard.domain.ExpiryPolicy;
 import com.github.fabriciolfj.giftcard.domain.GiftCardOrder;
 import com.github.fabriciolfj.giftcard.domain.Money;
 import com.github.fabriciolfj.giftcard.domain.Recipient;
@@ -9,7 +10,7 @@ public class GiftCardOrderMapper {
 
     private GiftCardOrderMapper() { }
 
-    public static GiftCardOrder of(CreateOrderGiftCardOrderCommand command) {
+    public static GiftCardOrder of(final CreateOrderGiftCardOrderCommand command, final ExpiryPolicy expiryPolicy) {
         final var money = Money.ofCents(command.amountCents());
         final var recipientCommand = command.recipientCommand();
 
@@ -18,6 +19,6 @@ public class GiftCardOrderMapper {
             recipient = new Recipient(recipientCommand.name(), recipientCommand.email(), recipientCommand.message());
         }
 
-        return GiftCardOrder.create(money, recipient, null, command.purchaserRef());
+        return GiftCardOrder.create(money, recipient, expiryPolicy, command.purchaserRef());
     }
 }

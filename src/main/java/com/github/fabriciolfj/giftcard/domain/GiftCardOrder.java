@@ -7,10 +7,10 @@ import lombok.Getter;
 
 import java.util.UUID;
 
+@Getter
 @AllArgsConstructor(access = AccessLevel.PRIVATE)
 public class GiftCardOrder {
 
-    @Getter
     private final UUID uuid;
     private final Money money;
     private final Recipient recipient;

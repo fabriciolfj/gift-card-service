@@ -1,5 +1,4 @@
 package com.github.fabriciolfj.giftcard.usecases.createordergift;
-
 import com.github.fabriciolfj.giftcard.domain.GiftCardOrder;
 import com.github.fabriciolfj.giftcard.command.CreateOrderGiftCardOrderCommand;
 import com.github.fabriciolfj.giftcard.usecases.common.GiftCardOrderMapper;
@@ -13,12 +12,15 @@ import java.util.List;
 public class OrchestratorCreateOrderGiftCardUsecase {
 
     private final GetParametersValidateGiftCardGateway getParametersGateway;
+    private final GetParametersExpiryGateway getParametersExpiryGateway;
     private final List<ValidateOrderGiftCardUsecase> validateOrderGiftCardUsecases;
 
     public OrchestratorCreateOrderGiftCardUsecase(final GetParametersValidateGiftCardGateway getParametersGateway,
-                                                  final List<ValidateOrderGiftCardUsecase> validateOrderGiftCardUsecases) {
+                                                  final List<ValidateOrderGiftCardUsecase> validateOrderGiftCardUsecases,
+                                                  final GetParametersExpiryGateway getParametersExpiryGateway) {
         this.getParametersGateway = getParametersGateway;
         this.validateOrderGiftCardUsecases = validateOrderGiftCardUsecases;
+        this.getParametersExpiryGateway = getParametersExpiryGateway;
     }
 
     public GiftCardOrder execute(final CreateOrderGiftCardOrderCommand command) {
@@ -27,6 +29,6 @@ public class OrchestratorCreateOrderGiftCardUsecase {
         final var parameter = getParametersGateway.process();
         validateOrderGiftCardUsecases.forEach(v -> v.execute(command, parameter));
 
-        return GiftCardOrderMapper.of(command);
+        return GiftCardOrderMapper.of(command, getParametersExpiryGateway.process());
     }
 }

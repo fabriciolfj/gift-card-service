@@ -6,6 +6,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.Duration;
 import java.util.Optional;
+import java.util.UUID;
 
 @Repository
 public class IdempotencyRepository {
@@ -17,14 +18,23 @@ public class IdempotencyRepository {
              where idempotency_key = :key
             """;
 
-    private static final String SQL_INSERT = """
+    private static final String SQL_CLAIM = """
             insert into idempotency_record
                 (idempotency_key, endpoint, request_fingerprint,
                  correlation_id, created_at, expires_at)
             values
                 (:key, :endpoint, :fingerprint,
                  :correlationId, now(), now() + :retention::interval)
-            on conflict (idempotency_key) do nothing            
+            on conflict (idempotency_key) do nothing
+            """;
+
+    private static final String SQL_COMPLETE = """
+            update idempotency_record
+               set response_status   = :status,
+                   response_body     = :body,
+                   response_location = :location,
+                   aggregate_id      = :aggregateId
+             where idempotency_key = :key
             """;
 
     private final JdbcClient jdbcClient;
@@ -40,19 +50,37 @@ public class IdempotencyRepository {
                 .optional();
     }
 
-    public boolean tryClaim(final String fingerprint,
-                            final String key,
-                            final String correlationId,
+    /**
+     * INSERT ... ON CONFLICT DO NOTHING: a tentativa de inserir É a verificação.
+     * Retorna 1 se esta chamada reservou a chave, 0 se ela já existia.
+     */
+    public boolean tryClaim(final String key,
                             final String endpoint,
-                            final Duration duration) {
-        int rows = jdbcClient.sql(SQL_INSERT)
+                            final String fingerprint,
+                            final String correlationId,
+                            final Duration retention) {
+        final int rows = jdbcClient.sql(SQL_CLAIM)
                 .param("key", key)
                 .param("endpoint", endpoint)
                 .param("fingerprint", fingerprint)
                 .param("correlationId", correlationId)
-                .param("retention", duration.toDays() + " days")
+                .param("retention", retention.toSeconds() + " seconds")
                 .update();
 
         return rows == 1;
+    }
+
+    public void complete(final String key,
+                         final int status,
+                         final String body,
+                         final String location,
+                         final UUID aggregateId) {
+        jdbcClient.sql(SQL_COMPLETE)
+                .param("key", key)
+                .param("status", status)
+                .param("body", body)
+                .param("location", location)
+                .param("aggregateId", aggregateId)
+                .update();
     }
 }

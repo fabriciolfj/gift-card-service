@@ -2,12 +2,13 @@ package com.github.fabriciolfj.giftcard;
 
 import com.github.fabriciolfj.giftcard.configurations.ExpiryProperties;
 import com.github.fabriciolfj.giftcard.configurations.GiftCardOrderProperties;
+import com.github.fabriciolfj.giftcard.configurations.IdempotencyProperties;
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 
 @SpringBootApplication
-@EnableConfigurationProperties({ExpiryProperties.class, GiftCardOrderProperties.class})
+@EnableConfigurationProperties({ExpiryProperties.class, GiftCardOrderProperties.class, IdempotencyProperties.class})
 public class GiftcardApplication {
 
 	public static void main(String[] args) {
