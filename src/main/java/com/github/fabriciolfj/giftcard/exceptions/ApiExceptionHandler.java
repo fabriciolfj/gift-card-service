@@ -1,7 +1,9 @@
 package com.github.fabriciolfj.giftcard.exceptions;
 
 
+import io.micrometer.core.instrument.MeterRegistry;
 import jakarta.validation.ConstraintViolationException;
+import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -22,11 +24,14 @@ import static com.github.fabriciolfj.giftcard.util.ConstantsUtil.CORRELATION_ID;
 import static org.springframework.http.HttpStatus.UNPROCESSABLE_ENTITY;
 
 
+@RequiredArgsConstructor
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
     private static final Logger log = LoggerFactory.getLogger(ApiExceptionHandler.class);
     private static final String BASE = "https://errors.example.com/";
+
+    private final MeterRegistry meterRegistry;
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ProblemDetail onInvalidBody(MethodArgumentNotValidException ex) {
@@ -93,6 +98,8 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(AmountOutOfRangeException.class)
     ProblemDetail onAmountOutOfRange(AmountOutOfRangeException ex) {
+        meterRegistry.counter("giftcard.order.rejected", "reason", "amount_out_of_range").increment();
+
         var problem = problem(UNPROCESSABLE_ENTITY,
                 "AMOUNT_OUT_OF_RANGE",
                 "Valor fora da faixa permitida",
@@ -107,6 +114,8 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(AmountNotMultipleException.class)
     ProblemDetail onAmountNotMultiple(AmountNotMultipleException ex) {
+        meterRegistry.counter("giftcard.order.rejected", "reason", "amount_not_multiple").increment();
+
         var problem = problem(HttpStatus.UNPROCESSABLE_ENTITY,
                 "AMOUNT_NOT_MULTIPLE",
                 "Valor não é múltiplo permitido",
@@ -119,6 +128,7 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(IdempotencyKeyReuseException.class)
     ProblemDetail onKeyReuse(IdempotencyKeyReuseException ex) {
+        meterRegistry.counter("giftcard.idempotency.rejected", "reason", "key_reuse").increment();
         return problem(HttpStatus.UNPROCESSABLE_ENTITY,
                 "IDEMPOTENCY_KEY_REUSE",
                 "Chave de idempotência reutilizada",
@@ -127,6 +137,8 @@ public class ApiExceptionHandler {
 
     @ExceptionHandler(IdempotencyInProgressException.class)
     ProblemDetail onInProgress(IdempotencyInProgressException ex) {
+        meterRegistry.counter("giftcard.idempotency.rejected", "reason", "in_progress").increment();
+
         var problem = problem(HttpStatus.CONFLICT,
                 "IN_PROGRESS",
                 "Requisição em processamento",

@@ -17,3 +17,15 @@ giftcard:
     retention: P7D
     key-min-length: 16
     key-max-length: 64
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+          - prometheus
+  metrics:
+    tags:
+      applicaiton: giftcard-service

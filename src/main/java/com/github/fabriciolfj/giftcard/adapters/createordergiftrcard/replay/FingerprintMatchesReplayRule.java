@@ -4,10 +4,7 @@ import com.github.fabriciolfj.giftcard.exceptions.IdempotencyKeyReuseException;
 import org.springframework.core.annotation.Order;
 import org.springframework.stereotype.Component;
 
-/**
- * Mesma chave e mesmo endpoint, mas o conteúdo da requisição mudou. Nada é
- * executado: é para isso que o fingerprint existe.
- */
+
 @Component
 @Order(2)
 public class FingerprintMatchesReplayRule implements IdempotencyReplayRule {
