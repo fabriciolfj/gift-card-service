@@ -1,5 +1,7 @@
 package com.github.fabriciolfj.giftcard.domain;
 
+import com.github.fabriciolfj.giftcard.exceptions.InvalidGiftCardCodeException;
+
 import java.util.Objects;
 
 import static com.github.fabriciolfj.giftcard.util.ConstantsUtil.ALPHABET;
@@ -36,7 +38,7 @@ public final class GiftCardCode {
         try {
             of(input);
             return true;
-        } catch (IllegalArgumentException | NullPointerException e) {
+        } catch (InvalidGiftCardCodeException | NullPointerException e) {
             return false;
         }
     }
@@ -70,7 +72,7 @@ public final class GiftCardCode {
 
     private static void valideCheckDigit(final String code) {
         if (!CheckDigit.isValid(code)) {
-            throw new IllegalArgumentException("check digit invalid");
+            throw new InvalidGiftCardCodeException("check digit invalid");
         }
     }
 
