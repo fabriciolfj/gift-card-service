@@ -5,6 +5,8 @@ server:
     max-keep-alive-requests: 100
 
 giftcard:
+  code:
+    pepper: ${GIFTCARD_CODE_PEPPER:RYA3HkwqGUTzPqF93FU3EQ0Kaveoarg/4gHYiv/SPPNjXdBaalNvlbyBR+WjrIgA}
   order:
     min-amount-cents: 2000          # R$ 20,00
     max-amount-cents: 100000        # R$ 1.000,00

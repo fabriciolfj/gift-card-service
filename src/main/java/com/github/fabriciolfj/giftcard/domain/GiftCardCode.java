@@ -46,7 +46,7 @@ public final class GiftCardCode {
     private static String normaliza(final String code) {
         var value = code.toUpperCase();
         var sb = new StringBuilder(LENGTH);
-        for (var c : value.toCharArray()) {
+        for (var c : value.toCharArray()) { 
             switch(c) {
                 case ' ', '-', '\t' -> { }
                 case 'L', 'I' -> sb.append("1");
