@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
+import org.springframework.beans.factory.parsing.Problem;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.http.converter.HttpMessageNotReadableException;
@@ -154,6 +155,31 @@ public class ApiExceptionHandler {
                 "INTERNAL_ERROR",
                 "Erro interno",
                 "Ocorreu um erro ao processar a requisição");
+    }
+
+    @ExceptionHandler(InvalidStateTransitionException.class)
+    ProblemDetail onInvalidStateTransition(final InvalidStateTransitionException ex) {
+        var problem = problem(HttpStatus.CONFLICT,
+                "INVALID_STATE_TRANSITION",
+                "Transição de estado inválida",
+                "Pedido em %s não pode ir para %s"
+                        .formatted(ex.getCurrentStatus(), ex.getTargetStatus()));
+        problem.setProperty("context", Map.of(
+                "currentStatus", ex.getCurrentStatus().name(),
+                "targetStatus", ex.getTargetStatus().name()));
+        return problem;
+    }
+
+    @ExceptionHandler(PaymentAmountMismatchException.class)
+    ProblemDetail onPaymentAmountMismatch(final PaymentAmountMismatchException ex) {
+        var problem = problem(UNPROCESSABLE_ENTITY,
+                "PAYMENT_AMOUNT_MISMATCH",
+                "Valor pago diverge do pedido",
+                ex.getMessage());
+        problem.setProperty("context", Map.of(
+                "expectedAmountCents", ex.getExpectedCents(),
+                "paidAmountCents", ex.getPaidCents()));
+        return problem;
     }
 
     private ProblemDetail problem(HttpStatus status, String code,

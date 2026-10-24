@@ -43,7 +43,7 @@ public class HmacGiftCardCodeHasher implements GiftCardCodeHasher {
     }
 
     @Override
-    public boolean matchs(GiftCardCode code, String storedHash) {
+    public boolean matches(GiftCardCode code, String storedHash) {
         if (storedHash == null) {
             return false;
         }

@@ -3,10 +3,7 @@ package com.github.fabriciolfj.giftcard.persistences.entities;
 import com.github.fabriciolfj.giftcard.domain.GiftCardOrder;
 import com.github.fabriciolfj.giftcard.domain.Recipient;
 
-/**
- * Fica neste pacote para alcançar os construtores package-private de
- * {@link GiftcardOrderEntity} e {@link RecipientEmbeddable}.
- */
+
 public final class GiftcardOrderEntityMapper {
 
     private GiftcardOrderEntityMapper() { }

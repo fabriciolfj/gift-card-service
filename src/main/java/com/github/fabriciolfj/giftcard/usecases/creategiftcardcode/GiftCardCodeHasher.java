@@ -6,5 +6,5 @@ public interface GiftCardCodeHasher {
 
     String hash(final GiftCardCode code);
 
-    boolean matchs(final GiftCardCode code, final String storedHash);
+    boolean matches(final GiftCardCode code, final String storedHash);
 }

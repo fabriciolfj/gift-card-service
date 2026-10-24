@@ -29,7 +29,7 @@ public final class GiftCardCode {
 
     public static GiftCardCode fromBody(final String body) {
         if (body.length() != LENGTH - 1) {
-            throw new IllegalArgumentException("body invalid length");
+            throw new InvalidGiftCardCodeException("body invalid length");
         }
         return of(body + CheckDigit.compute(body));
     }
@@ -60,13 +60,13 @@ public final class GiftCardCode {
 
     private static void valideCode(final String code) {
         if (code.length() != LENGTH) {
-            throw new IllegalArgumentException("value invalid");
+            throw new InvalidGiftCardCodeException("value invalid");
         }
     }
 
     private static void valideAlphabet(final String code) {
         if (!code.chars().allMatch(c -> ALPHABET.indexOf(c) >= 0)) {
-            throw new IllegalArgumentException("value the code not found alphabet");
+            throw new InvalidGiftCardCodeException("value the code not found alphabet");
         }
     }
 
