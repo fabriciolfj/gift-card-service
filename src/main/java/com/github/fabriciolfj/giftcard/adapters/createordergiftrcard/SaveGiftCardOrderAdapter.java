@@ -6,10 +6,12 @@ import com.github.fabriciolfj.giftcard.adapters.fingerprint.Fingerprint;
 import com.github.fabriciolfj.giftcard.command.IdempotentCommand;
 import com.github.fabriciolfj.giftcard.configurations.IdempotencyProperties;
 import com.github.fabriciolfj.giftcard.domain.GiftCardOrder;
+import com.github.fabriciolfj.giftcard.usecases.creategiftcard.ActivateGiftorderGateway;
 import com.github.fabriciolfj.giftcard.usecases.createordergift.SaveResult;
+import com.github.fabriciolfj.giftcard.exceptions.GiftCardOrderNotActivatableException;
 import com.github.fabriciolfj.giftcard.exceptions.IdempotencyInProgressException;
-import com.github.fabriciolfj.giftcard.persistences.entities.GiftcardOrderEntityMapper;
-import com.github.fabriciolfj.giftcard.persistences.repositories.GiftcardOrderRepository;
+import com.github.fabriciolfj.giftcard.persistences.entities.GiftCardOrderEntityMapper;
+import com.github.fabriciolfj.giftcard.persistences.repositories.GiftCardOrderRepository;
 import com.github.fabriciolfj.giftcard.persistences.repositories.IdempotencyRepository;
 import com.github.fabriciolfj.giftcard.usecases.createordergift.SaveGiftCardOrderGateway;
 import org.slf4j.MDC;
@@ -21,17 +23,17 @@ import java.util.UUID;
 import static com.github.fabriciolfj.giftcard.util.ConstantsUtil.CORRELATION_ID;
 
 @Component
-public class SaveGiftCardOrderAdapter implements SaveGiftCardOrderGateway {
+public class SaveGiftCardOrderAdapter implements SaveGiftCardOrderGateway, ActivateGiftorderGateway {
 
     private static final String ENDPOINT = "createGiftOrder";
 
     private final IdempotencyRepository idempotencyRepository;
-    private final GiftcardOrderRepository giftcardOrderRepository;
+    private final GiftCardOrderRepository giftcardOrderRepository;
     private final IdempotencyProperties idempotencyProperties;
     private final List<IdempotencyReplayRule> replayRules;
 
     public SaveGiftCardOrderAdapter(final IdempotencyRepository idempotencyRepository,
-                                    final GiftcardOrderRepository giftcardOrderRepository,
+                                    final GiftCardOrderRepository giftcardOrderRepository,
                                     final IdempotencyProperties idempotencyProperties,
                                     final List<IdempotencyReplayRule> replayRules) {
         this.idempotencyRepository = idempotencyRepository;
@@ -53,7 +55,7 @@ public class SaveGiftCardOrderAdapter implements SaveGiftCardOrderGateway {
             return replay(key, fingerprint);
         }
 
-        giftcardOrderRepository.insert(GiftcardOrderEntityMapper.toEntity(giftCardOrder, correlationId));
+        giftcardOrderRepository.insert(GiftCardOrderEntityMapper.toEntity(giftCardOrder, correlationId));
         return new SaveResult.Executed(giftCardOrder);
     }
 
@@ -73,5 +75,20 @@ public class SaveGiftCardOrderAdapter implements SaveGiftCardOrderGateway {
                 existing.responseStatus(),
                 existing.responseBody(),
                 existing.responseLocation());
+    }
+
+    @Override
+    public void process(final GiftCardOrder order) {
+        final var updated = giftcardOrderRepository.activate(
+                order.getUuid(),
+                order.getGiftCardId(),
+                order.getPaymentRef(),
+                order.getPaidAmount().cents(),
+                order.getPaidAt(),
+                order.getActivatedAt());
+
+        if (updated == 0) {
+            throw new GiftCardOrderNotActivatableException(order.getUuid());
+        }
     }
 }

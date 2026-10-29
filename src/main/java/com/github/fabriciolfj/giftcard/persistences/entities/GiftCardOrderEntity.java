@@ -1,13 +1,15 @@
 package com.github.fabriciolfj.giftcard.persistences.entities;
 
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 import java.time.Instant;
 import java.util.UUID;
 
 
 @Entity
 @Table(name = "gift_card_order")
-public class GiftcardOrderEntity {
+public class GiftCardOrderEntity {
 
     @Id
     @Column(name = "id", nullable = false, updatable = false)
@@ -16,6 +18,7 @@ public class GiftcardOrderEntity {
     @Column(name = "amount_cents", nullable = false, updatable = false)
     private long amountCents;
 
+    @JdbcTypeCode(SqlTypes.CHAR)
     @Column(name = "currency", nullable = false, length = 3, updatable = false)
     private String currency;
 
@@ -65,11 +68,11 @@ public class GiftcardOrderEntity {
     @Column(name = "cancelled_at")
     private Instant cancelledAt;
 
-    protected GiftcardOrderEntity() {
+    protected GiftCardOrderEntity() {
 
     }
 
-    GiftcardOrderEntity(UUID id,
+    GiftCardOrderEntity(UUID id,
                         long amountCents,
                         String currency,
                         String status,
@@ -110,7 +113,7 @@ public class GiftcardOrderEntity {
     @Override
     public boolean equals(Object o) {
         if (this == o) return true;
-        if (!(o instanceof GiftcardOrderEntity other)) return false;
+        if (!(o instanceof GiftCardOrderEntity other)) return false;
         return id != null && id.equals(other.id);
     }
 

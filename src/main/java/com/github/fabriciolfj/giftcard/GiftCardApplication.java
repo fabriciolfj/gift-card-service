@@ -9,10 +9,10 @@ import org.springframework.boot.context.properties.EnableConfigurationProperties
 
 @SpringBootApplication
 @EnableConfigurationProperties({ExpiryProperties.class, GiftCardOrderProperties.class, IdempotencyProperties.class})
-public class GiftcardApplication {
+public class GiftCardApplication {
 
 	public static void main(String[] args) {
-		SpringApplication.run(GiftcardApplication.class, args);
+		SpringApplication.run(GiftCardApplication.class, args);
 	}
 
 }

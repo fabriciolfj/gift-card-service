@@ -19,11 +19,11 @@ import static com.github.fabriciolfj.giftcard.entrypoints.mapper.CreateOrderGift
 @Validated
 @RestController
 @RequestMapping("/v1/gift-card-orders")
-public class GiftcardController {
+public class GiftCardController {
 
     private final ProcessCreateGiftCardOrderUseCase processCreateGiftCardOrderUseCase;
 
-    public GiftcardController(final ProcessCreateGiftCardOrderUseCase processCreateGiftCardOrderUseCase) {
+    public GiftCardController(final ProcessCreateGiftCardOrderUseCase processCreateGiftCardOrderUseCase) {
         this.processCreateGiftCardOrderUseCase = processCreateGiftCardOrderUseCase;
     }
 

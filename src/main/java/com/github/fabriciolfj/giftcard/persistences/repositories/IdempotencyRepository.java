@@ -39,7 +39,7 @@ public class IdempotencyRepository {
 
     private final JdbcClient jdbcClient;
 
-    private IdempotencyRepository(final JdbcClient jdbcClient) {
+    public IdempotencyRepository(final JdbcClient jdbcClient) {
         this.jdbcClient = jdbcClient;
     }
 

@@ -182,6 +182,26 @@ public class ApiExceptionHandler {
         return problem;
     }
 
+    @ExceptionHandler(GiftCardOrderNotFoundException.class)
+    ProblemDetail onOrderNotFound(final GiftCardOrderNotFoundException ex) {
+        var problem = problem(HttpStatus.NOT_FOUND,
+                "ORDER_NOT_FOUND",
+                "Pedido não encontrado",
+                ex.getMessage());
+        problem.setProperty("context", Map.of("orderId", ex.getOrderId().toString()));
+        return problem;
+    }
+
+    @ExceptionHandler(GiftCardOrderNotActivatableException.class)
+    ProblemDetail onOrderNotActivatable(final GiftCardOrderNotActivatableException ex) {
+        var problem = problem(HttpStatus.CONFLICT,
+                "ORDER_NOT_ACTIVATABLE",
+                "Pedido não pode ser ativado",
+                ex.getMessage());
+        problem.setProperty("context", Map.of("orderId", ex.getOrderId().toString()));
+        return problem;
+    }
+
     private ProblemDetail problem(HttpStatus status, String code,
                                   String title, String detail) {
         var problem = ProblemDetail.forStatusAndDetail(status, detail);

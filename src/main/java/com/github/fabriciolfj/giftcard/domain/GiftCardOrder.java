@@ -8,6 +8,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 
 import java.time.Instant;
+import java.time.Period;
 import java.util.UUID;
 
 @Getter
@@ -64,10 +65,11 @@ public class GiftCardOrder {
     public GiftCardOrder activate(UUID giftCardId,
                                   String paymentRef,
                                   Money paidAmount,
-                                  Instant paidAt) {
+                                  Instant paidAt,
+                                  Instant activatedAt) {
 
         if (status != OrderStatus.PENDING_PAYMENT) {
-            throw new InvalidStateTransitionException(status, null);
+            throw new InvalidStateTransitionException(status, OrderStatus.ACTIVATED);
         }
 
         if (!money.equals(paidAmount)) {
@@ -78,13 +80,16 @@ public class GiftCardOrder {
                 money,
                 recipient,
                 expiryPolicy,
-                status,
+                OrderStatus.ACTIVATED,
                 purchaserRef,
                 giftCardId,
                 paymentRef,
                 paidAmount,
                 paidAt,
-                Instant.now());
+                activatedAt);
     }
 
+    public Period getDuration() {
+        return expiryPolicy.duration();
+    }
 }

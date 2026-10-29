@@ -31,3 +31,23 @@ management:
   metrics:
     tags:
       applicaiton: giftcard-service
+spring:
+  application:
+    name: giftcard-service
+  datasource:
+    url: jdbc:postgresql://localhost:5432/giftcard
+    username: postgres
+    password: postgres
+    driver-class-name: org.postgresql.Driver
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false

@@ -2,6 +2,8 @@ package com.github.fabriciolfj.giftcard.persistences.entities;
 
 import com.github.fabriciolfj.giftcard.domain.GiftCardStatus;
 import jakarta.persistence.*;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.Instant;
 import java.util.UUID;
@@ -10,22 +12,26 @@ import static jakarta.persistence.EnumType.STRING;
 
 @Table(name = "gift_card")
 @Entity
-public class GiftcardEntity {
+public class GiftCardEntity {
     @Id
     private UUID id;
 
-    @Column(updatable = false)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(updatable = false, length = 64)
     private String codeHash;
 
-    @Column(updatable = false)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(updatable = false, length = 4)
     private String codeLast4;
 
     @Enumerated(STRING)
     private GiftCardStatus status;
 
-    @Column(updatable = false)
+    @JdbcTypeCode(SqlTypes.CHAR)
+    @Column(updatable = false, length = 3)
     private String currency;
 
+    @Column(name = "expiry_period")
     private Instant expiresAt;
 
     private String blockReason;
@@ -39,11 +45,11 @@ public class GiftcardEntity {
     @Column(insertable = false, updatable = false)
     private Instant updatedAt;
 
-    public GiftcardEntity() {
+    public GiftCardEntity() {
 
     }
 
-    public GiftcardEntity(UUID id,
+    public GiftCardEntity(UUID id,
                           String codeHash,
                           String codeLast4,
                           GiftCardStatus status,

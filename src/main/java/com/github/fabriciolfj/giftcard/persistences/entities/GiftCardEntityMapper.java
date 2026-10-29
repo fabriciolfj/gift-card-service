@@ -3,14 +3,14 @@ package com.github.fabriciolfj.giftcard.persistences.entities;
 import com.github.fabriciolfj.giftcard.domain.Currency;
 import com.github.fabriciolfj.giftcard.domain.GiftCard;
 
-public final class GiftcardEntityMapper {
+public final class GiftCardEntityMapper {
 
-    private GiftcardEntityMapper() {
+    private GiftCardEntityMapper() {
 
     }
 
-    public static GiftcardEntity toEntity(final GiftCard giftCard) {
-        return new GiftcardEntity(
+    public static GiftCardEntity toEntity(final GiftCard giftCard) {
+        return new GiftCardEntity(
                 giftCard.getUuid(),
                 giftCard.getCodeHash(),
                 giftCard.getCodeLast4(),
@@ -24,7 +24,7 @@ public final class GiftcardEntityMapper {
         );
     }
 
-    public static GiftCard toDomain(final GiftcardEntity entity) {
+    public static GiftCard toDomain(final GiftCardEntity entity) {
         return GiftCard.rehydrate(
                 entity.getId(),
                 entity.getCodeHash(),
